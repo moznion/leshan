@@ -23,8 +23,10 @@ import java.security.cert.X509Certificate;
 import org.eclipse.californium.scandium.dtls.AlertMessage;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
+import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
 import org.eclipse.californium.scandium.dtls.x509.CertificateVerifier;
+import org.eclipse.leshan.core.util.X509CertUtil;
 
 public abstract class BaseCertificateVerifier implements CertificateVerifier {
 
@@ -58,5 +60,20 @@ public abstract class BaseCertificateVerifier implements CertificateVerifier {
             throw new HandshakeException("Certificate chain could not be validated - unknown certificate type", alert);
         }
         return (X509Certificate) receivedServerCertificate;
+    }
+
+    protected void validateSubject(final DTLSSession session, final X509Certificate receivedServerCertificate)
+            throws HandshakeException {
+        final InetSocketAddress peerSocket = session.getPeer();
+
+        if (X509CertUtil.matchSubjectDnsName(receivedServerCertificate, peerSocket.getHostName()))
+            return;
+
+        if (X509CertUtil.matchSubjectInetAddress(receivedServerCertificate, peerSocket.getAddress()))
+            return;
+
+        AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE, session.getPeer());
+        throw new HandshakeException(
+                "Certificate chain could not be validated - server identity does not match certificate", alert);
     }
 }

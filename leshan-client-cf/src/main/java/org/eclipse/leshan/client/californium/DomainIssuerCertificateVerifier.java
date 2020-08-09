@@ -71,5 +71,8 @@ public class DomainIssuerCertificateVerifier extends BaseCertificateVerifier {
                     session.getPeer());
             throw new HandshakeException("Certificate chain could not be validated", alert);
         }
+
+        // - validate server name
+        validateSubject(session, receivedServerCertificate);
     }
 }

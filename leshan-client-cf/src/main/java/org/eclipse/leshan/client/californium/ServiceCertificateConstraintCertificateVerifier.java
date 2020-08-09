@@ -86,5 +86,8 @@ public class ServiceCertificateConstraintCertificateVerifier extends BaseCertifi
                     session.getPeer());
             throw new HandshakeException("Certificate chain could not be validated", alert);
         }
+
+        // - validate server name
+        validateSubject(session, receivedServerCertificate);
     }
 }

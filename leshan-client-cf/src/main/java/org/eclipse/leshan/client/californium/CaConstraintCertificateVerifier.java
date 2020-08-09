@@ -71,6 +71,8 @@ public class CaConstraintCertificateVerifier extends BaseCertificateVerifier {
         CertPath messageChain = message.getCertificateChain();
 
         validateCertificateChainNotEmpty(messageChain, session.getPeer());
+        X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
+                session.getPeer());
 
         // - must do PKIX validation with trustStore
         CertPath certPath = null;
@@ -97,5 +99,8 @@ public class CaConstraintCertificateVerifier extends BaseCertificateVerifier {
                     session.getPeer());
             throw new HandshakeException("Certificate chain could not be validated", alert);
         }
+
+        // - validate server name
+        validateSubject(session, receivedServerCertificate);
     }
 }

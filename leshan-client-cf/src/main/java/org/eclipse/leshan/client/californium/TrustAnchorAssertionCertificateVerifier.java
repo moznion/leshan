@@ -64,6 +64,8 @@ public class TrustAnchorAssertionCertificateVerifier extends BaseCertificateVeri
         CertPath messageChain = message.getCertificateChain();
 
         validateCertificateChainNotEmpty(messageChain, session.getPeer());
+        X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
+                session.getPeer());
 
         // - must do PKIX validation with trustStore
         try {
@@ -71,7 +73,11 @@ public class TrustAnchorAssertionCertificateVerifier extends BaseCertificateVeri
         } catch (GeneralSecurityException e) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated", alert, e);
+            throw new HandshakeException("Certificate chain could not be validated : server cert chain is empty",
+                    alert);
         }
+
+        // - validate server name
+        validateSubject(session, receivedServerCertificate);
     }
 }
