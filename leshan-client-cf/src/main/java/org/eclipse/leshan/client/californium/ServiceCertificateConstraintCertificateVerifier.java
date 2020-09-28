@@ -63,7 +63,8 @@ public class ServiceCertificateConstraintCertificateVerifier extends BaseCertifi
     }
 
     @Override
-    public void verifyCertificate(CertificateMessage message, DTLSSession session) throws HandshakeException {
+    public CertPath verifyCertificate(Boolean clientUsage, boolean truncateCertificatePath, CertificateMessage message,
+            DTLSSession session) throws HandshakeException {
         CertPath messageChain = message.getCertificateChain();
 
         validateCertificateChainNotEmpty(messageChain, session.getPeer());
@@ -71,9 +72,20 @@ public class ServiceCertificateConstraintCertificateVerifier extends BaseCertifi
         X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
                 session.getPeer());
 
+        // If clientUsage is defined then check key usage
+        if (clientUsage) {
+            if (!CertPathUtil.canBeUsedForAuthentication(receivedServerCertificate, true)) {
+                AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
+                        session.getPeer());
+                throw new HandshakeException("Certificate chain could not be validated - Key Usage doesn't match!",
+                        alert);
+            }
+        }
+
         // - must do PKIX validation with trustStore
+        CertPath certPath = expandCertPath(messageChain, trustedCertificates);
         try {
-            CertPathUtil.validateCertificatePath(false, messageChain, trustedCertificates);
+            CertPathUtil.validateCertificatePath(truncateCertificatePath, certPath, trustedCertificates);
         } catch (GeneralSecurityException e) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
@@ -89,5 +101,7 @@ public class ServiceCertificateConstraintCertificateVerifier extends BaseCertifi
 
         // - validate server name
         validateSubject(session, receivedServerCertificate);
+
+        return certPath;
     }
 }

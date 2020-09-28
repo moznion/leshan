@@ -19,6 +19,7 @@ import java.security.cert.CertPath;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 
+import org.eclipse.californium.elements.util.CertPathUtil;
 import org.eclipse.californium.scandium.dtls.AlertMessage;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
@@ -57,13 +58,24 @@ public class DomainIssuerCertificateVerifier extends BaseCertificateVerifier {
     }
 
     @Override
-    public void verifyCertificate(CertificateMessage message, DTLSSession session) throws HandshakeException {
+    public CertPath verifyCertificate(Boolean clientUsage, boolean truncateCertificatePath, CertificateMessage message,
+            DTLSSession session) throws HandshakeException {
         CertPath messageChain = message.getCertificateChain();
 
         validateCertificateChainNotEmpty(messageChain, session.getPeer());
 
         X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
                 session.getPeer());
+
+        // If clientUsage is defined then check key usage
+        if (clientUsage) {
+            if (!CertPathUtil.canBeUsedForAuthentication(receivedServerCertificate, true)) {
+                AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
+                        session.getPeer());
+                throw new HandshakeException("Certificate chain could not be validated - Key Usage doesn't match!",
+                        alert);
+            }
+        }
 
         // - target certificate must match what is provided certificate in server info
         if (!domainIssuerCertificate.equals(receivedServerCertificate)) {
@@ -74,5 +86,7 @@ public class DomainIssuerCertificateVerifier extends BaseCertificateVerifier {
 
         // - validate server name
         validateSubject(session, receivedServerCertificate);
+
+        return messageChain;
     }
 }

@@ -60,24 +60,37 @@ public class TrustAnchorAssertionCertificateVerifier extends BaseCertificateVeri
     }
 
     @Override
-    public void verifyCertificate(CertificateMessage message, DTLSSession session) throws HandshakeException {
+    public CertPath verifyCertificate(Boolean clientUsage, boolean truncateCertificatePath, CertificateMessage message,
+            DTLSSession session) throws HandshakeException {
         CertPath messageChain = message.getCertificateChain();
 
         validateCertificateChainNotEmpty(messageChain, session.getPeer());
         X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
                 session.getPeer());
 
+        // If clientUsage is defined then check key usage
+        if (clientUsage) {
+            if (!CertPathUtil.canBeUsedForAuthentication(receivedServerCertificate, true)) {
+                AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
+                        session.getPeer());
+                throw new HandshakeException("Certificate chain could not be validated - Key Usage doesn't match!",
+                        alert);
+            }
+        }
+
         // - must do PKIX validation with trustStore
+        CertPath certPath = expandCertPath(messageChain, trustAnchor);
         try {
-            CertPathUtil.validateCertificatePath(false, messageChain, trustAnchor);
+            CertPathUtil.validateCertificatePath(truncateCertificatePath, certPath, trustAnchor);
         } catch (GeneralSecurityException e) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated : server cert chain is empty",
-                    alert);
+            throw new HandshakeException("Certificate chain could not be validated", alert, e);
         }
 
         // - validate server name
         validateSubject(session, receivedServerCertificate);
+
+        return certPath;
     }
 }
