@@ -42,12 +42,12 @@ import org.eclipse.leshan.senml.SenMLRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class LwM2mNodeSenMLJsonEncoder implements TimestampedNodeEncoder {
-    private static final Logger LOG = LoggerFactory.getLogger(LwM2mNodeSenMLJsonEncoder.class);
+public class LwM2mNodeSenMLEncoder implements TimestampedNodeEncoder {
+    private static final Logger LOG = LoggerFactory.getLogger(LwM2mNodeSenMLEncoder.class);
 
     private final SenMLEncoder encoder;
 
-    public LwM2mNodeSenMLJsonEncoder(SenMLEncoder encoder) {
+    public LwM2mNodeSenMLEncoder(SenMLEncoder encoder) {
         this.encoder = encoder;
     }
 
