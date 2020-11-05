@@ -172,9 +172,7 @@ public class CaliforniumEndpointsManager implements EndpointsManager {
                     if (this.trustStore != null) {
                         newTrustedCertificatesList.addAll(CertPathUtil.toX509CertificatesList(this.trustStore));
                     }
-                    if (serverInfo.serverCertificate instanceof X509Certificate) {
-                        newTrustedCertificatesList.add((X509Certificate) serverInfo.serverCertificate);
-                    }
+                    newTrustedCertificatesList.add((X509Certificate) serverInfo.serverCertificate);
                     trustedCertificates = newTrustedCertificatesList.toArray(new X509Certificate[0]);
                     newBuilder.setCertificateVerifier(
                             new CaConstraintCertificateVerifier(serverInfo.serverCertificate, trustedCertificates));
@@ -190,15 +188,8 @@ public class CaliforniumEndpointsManager implements EndpointsManager {
                     newBuilder.setCertificateVerifier(new ServiceCertificateConstraintCertificateVerifier(
                             serverInfo.serverCertificate, trustedCertificates));
                 } else if (certificateUsage == CertificateUsage.TRUST_ANCHOR_ASSERTION) {
-                    X509Certificate[] trustedCertificates = null;
-
-                    // - trustStore is only the provided certificate in server info
-                    if (serverInfo.serverCertificate instanceof X509Certificate) {
-                        trustedCertificates = new X509Certificate[] { (X509Certificate) serverInfo.serverCertificate };
-                    }
-
                     newBuilder.setCertificateVerifier(new TrustAnchorAssertionCertificateVerifier(
-                            serverInfo.serverCertificate, trustedCertificates));
+                            (X509Certificate) serverInfo.serverCertificate));
                 } else if (certificateUsage == CertificateUsage.DOMAIN_ISSUER_CERTIFICATE) {
                     newBuilder
                             .setCertificateVerifier(new DomainIssuerCertificateVerifier(serverInfo.serverCertificate));

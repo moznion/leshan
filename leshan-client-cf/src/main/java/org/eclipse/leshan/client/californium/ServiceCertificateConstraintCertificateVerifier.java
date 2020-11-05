@@ -15,6 +15,11 @@
  *******************************************************************************/
 package org.eclipse.leshan.client.californium;
 
+import java.security.GeneralSecurityException;
+import java.security.cert.CertPath;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+
 import org.eclipse.californium.elements.util.CertPathUtil;
 import org.eclipse.californium.scandium.dtls.AlertMessage;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
@@ -22,17 +27,14 @@ import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
 import org.eclipse.californium.scandium.dtls.CertificateMessage;
 import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
-
-import java.security.GeneralSecurityException;
-import java.security.cert.CertPath;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
+import org.eclipse.leshan.core.util.Validate;
 
 /**
  * This class implements Certificate Usage (1) - Service Certificate Constraint
  *
  * From RFC 6698:
- *
+ * 
+ * <pre>
  * 1 -- Certificate usage 1 is used to specify an end entity
  *       certificate, or the public key of such a certificate, that MUST be
  *       matched with the end entity certificate given by the server in
@@ -41,48 +43,45 @@ import java.security.cert.X509Certificate;
  *       certificate can be used by a given service on a host.  The target
  *       certificate MUST pass PKIX certification path validation and MUST
  *       match the TLSA record.
- *
+ * </pre>
+ * 
  * For details about Certificate Usage please see:
  * <a href="https://tools.ietf.org/html/rfc6698#section-2.1.1">rfc6698#section-2.1.1</a> - The Certificate Usage Field
  */
-public class ServiceCertificateConstraintCertificateVerifier extends LeshanCertificateVerifierBase {
-    public ServiceCertificateConstraintCertificateVerifier(Certificate expectedServerCertificate,
+public class ServiceCertificateConstraintCertificateVerifier extends BaseCertificateVerifier {
+
+    private final Certificate serviceCertificate;
+    private final X509Certificate[] trustedCertificates;
+
+    public ServiceCertificateConstraintCertificateVerifier(Certificate serviceCertificate,
             X509Certificate[] trustedCertificates) {
-        super(expectedServerCertificate, trustedCertificates);
+        Validate.notNull(serviceCertificate);
+        Validate.notNull(trustedCertificates);
+        Validate.notEmpty(trustedCertificates);
+        this.serviceCertificate = serviceCertificate;
+        this.trustedCertificates = trustedCertificates;
     }
 
     @Override
     public void verifyCertificate(CertificateMessage message, DTLSSession session) throws HandshakeException {
         CertPath messageChain = message.getCertificateChain();
 
-        if (messageChain.getCertificates().size() == 0) {
+        validateCertificateChainNotEmpty(messageChain, session.getPeer());
+
+        X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
+                session.getPeer());
+
+        // - must do PKIX validation with trustStore
+        try {
+            CertPathUtil.validateCertificatePath(false, messageChain, trustedCertificates);
+        } catch (GeneralSecurityException e) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated : server cert chain is empty",
-                    alert);
-        }
-
-        Certificate receivedServerCertificate = messageChain.getCertificates().get(0);
-        if (!(receivedServerCertificate instanceof X509Certificate)) {
-            AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.UNSUPPORTED_CERTIFICATE,
-                    session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated - unknown certificate type", alert);
-        }
-        X509Certificate serverCertificate = (X509Certificate) receivedServerCertificate;
-
-        if (trustedCertificates != null) {
-            try {
-                // - must do PKIX validation with trustStore
-                CertPathUtil.validateCertificatePath(false, messageChain, trustedCertificates);
-            } catch (GeneralSecurityException e) {
-                AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
-                        session.getPeer());
-                throw new HandshakeException("Certificate chain could not be validated", alert, e);
-            }
+            throw new HandshakeException("Certificate chain could not be validated", alert, e);
         }
 
         // - target certificate must match what is provided certificate in server info
-        if (!expectedServerCertificate.equals(serverCertificate)) {
+        if (!serviceCertificate.equals(receivedServerCertificate)) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
             throw new HandshakeException("Certificate chain could not be validated", alert);

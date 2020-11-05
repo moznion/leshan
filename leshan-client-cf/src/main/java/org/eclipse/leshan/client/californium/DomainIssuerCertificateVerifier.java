@@ -15,22 +15,24 @@
  *******************************************************************************/
 package org.eclipse.leshan.client.californium;
 
+import java.security.cert.CertPath;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+
 import org.eclipse.californium.scandium.dtls.AlertMessage;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
 import org.eclipse.californium.scandium.dtls.CertificateMessage;
 import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
-
-import java.security.cert.CertPath;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
+import org.eclipse.leshan.core.util.Validate;
 
 /**
  * This class implements Certificate Usage (3) - Domain Issuer Certificate
  *
  * From RFC 6698:
- *
+ * 
+ * <pre>
  * 3 -- Certificate usage 3 is used to specify a certificate, or the
  *       public key of such a certificate, that MUST match the end entity
  *       certificate given by the server in TLS.  This certificate usage is
@@ -41,36 +43,30 @@ import java.security.cert.X509Certificate;
  *       usage 1 and certificate usage 3 is that certificate usage 1
  *       requires that the certificate pass PKIX validation, but PKIX
  *       validation is not tested for certificate usage 3.
- *
+ * </pre>
+ * 
  * For details about Certificate Usage please see:
  * <a href="https://tools.ietf.org/html/rfc6698#section-2.1.1">rfc6698#section-2.1.1</a> - The Certificate Usage Field
  */
-public class DomainIssuerCertificateVerifier extends LeshanCertificateVerifierBase {
-    public DomainIssuerCertificateVerifier(Certificate expectedServerCertificate) {
-        super(expectedServerCertificate, null);
+public class DomainIssuerCertificateVerifier extends BaseCertificateVerifier {
+    private final Certificate domainIssuerCertificate;
+
+    public DomainIssuerCertificateVerifier(Certificate domainIssuerCertificate) {
+        Validate.notNull(domainIssuerCertificate);
+        this.domainIssuerCertificate = domainIssuerCertificate;
     }
 
     @Override
     public void verifyCertificate(CertificateMessage message, DTLSSession session) throws HandshakeException {
         CertPath messageChain = message.getCertificateChain();
 
-        if (messageChain.getCertificates().size() == 0) {
-            AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
-                    session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated : server cert chain is empty",
-                    alert);
-        }
+        validateCertificateChainNotEmpty(messageChain, session.getPeer());
 
-        Certificate receivedServerCertificate = messageChain.getCertificates().get(0);
-        if (!(receivedServerCertificate instanceof X509Certificate)) {
-            AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.UNSUPPORTED_CERTIFICATE,
-                    session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated - unknown certificate type", alert);
-        }
-        X509Certificate serverCertificate = (X509Certificate) receivedServerCertificate;
+        X509Certificate receivedServerCertificate = validateReceivedCertificateIsSupported(messageChain,
+                session.getPeer());
 
         // - target certificate must match what is provided certificate in server info
-        if (!expectedServerCertificate.equals(serverCertificate)) {
+        if (!domainIssuerCertificate.equals(receivedServerCertificate)) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
             throw new HandshakeException("Certificate chain could not be validated", alert);

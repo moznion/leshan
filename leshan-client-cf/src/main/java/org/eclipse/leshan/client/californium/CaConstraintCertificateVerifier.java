@@ -15,6 +15,12 @@
  *******************************************************************************/
 package org.eclipse.leshan.client.californium;
 
+import java.security.GeneralSecurityException;
+import java.security.cert.CertPath;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.util.List;
+
 import org.eclipse.californium.elements.util.CertPathUtil;
 import org.eclipse.californium.scandium.dtls.AlertMessage;
 import org.eclipse.californium.scandium.dtls.AlertMessage.AlertDescription;
@@ -22,18 +28,14 @@ import org.eclipse.californium.scandium.dtls.AlertMessage.AlertLevel;
 import org.eclipse.californium.scandium.dtls.CertificateMessage;
 import org.eclipse.californium.scandium.dtls.DTLSSession;
 import org.eclipse.californium.scandium.dtls.HandshakeException;
-
-import java.security.GeneralSecurityException;
-import java.security.cert.CertPath;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
-import java.util.List;
+import org.eclipse.leshan.core.util.Validate;
 
 /**
  * This class implements Certificate Usage (0) - CA Constraint
  *
  * From RFC 6698:
- *
+ * 
+ * <pre>
  * 0 -- Certificate usage 0 is used to specify a CA certificate, or
  *       the public key of such a certificate, that MUST be found in any of
  *       the PKIX certification paths for the end entity certificate given
@@ -46,60 +48,51 @@ import java.util.List;
  *       certificate usage allows both trust anchors and CA certificates,
  *       the certificate might or might not have the basicConstraints
  *       extension present.
- *
+ * </pre>
+ * 
  * For details about Certificate Usage please see:
  * <a href="https://tools.ietf.org/html/rfc6698#section-2.1.1">rfc6698#section-2.1.1</a> - The Certificate Usage Field
  */
-public class CaConstraintCertificateVerifier extends LeshanCertificateVerifierBase {
+public class CaConstraintCertificateVerifier extends BaseCertificateVerifier {
 
-    public CaConstraintCertificateVerifier(Certificate expectedServerCertificate,
-            X509Certificate[] trustedCertificates) {
-        super(expectedServerCertificate, trustedCertificates);
+    private final Certificate caCertificate;
+    private final X509Certificate[] trustedCertificates;
+
+    public CaConstraintCertificateVerifier(Certificate caCertificate, X509Certificate[] trustedCertificates) {
+        Validate.notNull(caCertificate);
+        Validate.notNull(trustedCertificates);
+        Validate.notEmpty(trustedCertificates);
+        this.caCertificate = caCertificate;
+        this.trustedCertificates = trustedCertificates;
     }
 
     @Override
     public void verifyCertificate(CertificateMessage message, DTLSSession session) throws HandshakeException {
         CertPath messageChain = message.getCertificateChain();
 
-        if (messageChain.getCertificates().size() == 0) {
+        validateCertificateChainNotEmpty(messageChain, session.getPeer());
+
+        // - must do PKIX validation with trustStore
+        CertPath certPath = null;
+        try {
+            certPath = CertPathUtil.validateCertificatePath(false, messageChain, trustedCertificates);
+        } catch (GeneralSecurityException e) {
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated : server cert chain is empty",
-                    alert);
+            throw new HandshakeException("Certificate chain could not be validated", alert, e);
         }
-
-        Certificate receivedServerCertificate = messageChain.getCertificates().get(0);
-        if (!(receivedServerCertificate instanceof X509Certificate)) {
-            AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.UNSUPPORTED_CERTIFICATE,
-                    session.getPeer());
-            throw new HandshakeException("Certificate chain could not be validated - unknown certificate type", alert);
-        }
-
-        CertPath certPath = null;
-        if (trustedCertificates != null) {
-            try {
-                // - must do PKIX validation with trustStore
-                certPath = CertPathUtil.validateCertificatePath(false, messageChain, trustedCertificates);
-            } catch (GeneralSecurityException e) {
-                AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
-                        session.getPeer());
-                throw new HandshakeException("Certificate chain could not be validated", alert, e);
-            }
-        }
-
-        boolean found = false;
 
         // - must check that given certificate is part of certPath
+        boolean found = false;
         List<? extends Certificate> certificates = certPath.getCertificates();
         for (Certificate certificate : certificates) {
-            if (certificate.equals(expectedServerCertificate)) {
+            if (certificate.equals(caCertificate)) {
                 found = true;
                 break;
             }
         }
-
         if (!found) {
-            // Np match found -> throw exception about it
+            // No match found -> throw exception about it
             AlertMessage alert = new AlertMessage(AlertLevel.FATAL, AlertDescription.BAD_CERTIFICATE,
                     session.getPeer());
             throw new HandshakeException("Certificate chain could not be validated", alert);
