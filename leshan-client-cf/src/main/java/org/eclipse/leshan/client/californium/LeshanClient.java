@@ -65,7 +65,7 @@ public class LeshanClient implements LwM2mClient {
 
     public LeshanClient(String endpoint, CoapEndpoint unsecuredEndpoint, CoapEndpoint securedEndpoint,
             List<? extends LwM2mObjectEnabler> objectEnablers, NetworkConfig coapConfig,
-            Map<String, String> additionalAttributes) {
+            Map<String, String> additionalAttributes, Runnable shutdownTrigger) {
 
         Validate.notNull(endpoint);
         Validate.notEmpty(objectEnablers);
@@ -122,7 +122,7 @@ public class LeshanClient implements LwM2mClient {
         // Create registration engine
         bootstrapHandler = new BootstrapHandler(this.objectEnablers);
         engine = new RegistrationEngine(endpoint, this.objectEnablers, requestSender, bootstrapHandler, observers,
-                additionalAttributes);
+                additionalAttributes, shutdownTrigger);
 
         // Create CoAP Server
         clientSideServer = new CoapServer(coapConfig) {

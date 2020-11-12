@@ -80,14 +80,17 @@ public class RegistrationEngine {
     private final ScheduledExecutorService schedExecutor = Executors
             .newSingleThreadScheduledExecutor(new NamedThreadFactory("RegistrationEngine#%d"));
 
+    private final Runnable shutdownTrigger;
+
     public RegistrationEngine(String endpoint, Map<Integer, LwM2mObjectEnabler> objectEnablers,
             LwM2mRequestSender requestSender, BootstrapHandler bootstrapState, LwM2mClientObserver observer,
-            Map<String, String> additionalAttributes) {
+            Map<String, String> additionalAttributes, Runnable shutdownTrigger) {
         this.endpoint = endpoint;
         this.objectEnablers = objectEnablers;
         this.bootstrapHandler = bootstrapState;
         this.observer = observer;
         this.additionalAttributes = additionalAttributes;
+        this.shutdownTrigger = shutdownTrigger;
 
         sender = requestSender;
     }
@@ -96,11 +99,14 @@ public class RegistrationEngine {
         stop(false); // stop without de-register
         synchronized (this) {
             started = true;
-            registerFuture = schedExecutor.submit(new RegistrationTask());
+            registerFuture = schedExecutor.submit(new RegistrationTask(shutdownTrigger));
         }
     }
 
     private boolean bootstrap() throws InterruptedException {
+        if (true) {
+            throw new RuntimeException("BOOTSTRAP");
+        }
         ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
 
         if (serversInfo.bootstrap == null) {
@@ -156,6 +162,9 @@ public class RegistrationEngine {
     }
 
     private boolean register() throws InterruptedException {
+        if (true) {
+            throw new RuntimeException("REGISTER");
+        }
         ServersInfo serversInfo = ServersInfoExtractor.getInfo(objectEnablers);
         DmServerInfo dmInfo = serversInfo.deviceMangements.values().iterator().next();
 
@@ -277,6 +286,12 @@ public class RegistrationEngine {
     }
 
     private class RegistrationTask implements Runnable {
+        private final Runnable shutdownTrigger;
+
+        private RegistrationTask(final Runnable shutdownTrigger) {
+            this.shutdownTrigger = shutdownTrigger;
+        }
+
         @Override
         public void run() {
             try {
@@ -304,6 +319,7 @@ public class RegistrationEngine {
                 LOG.info("Registration task interrupted. ");
             } catch (RuntimeException e) {
                 LOG.error("Unexpected exception during update registration task", e);
+                shutdownTrigger.run();
             }
         }
     }
@@ -311,7 +327,7 @@ public class RegistrationEngine {
     private synchronized void scheduleRegistration() {
         if (started) {
             LOG.info("Unable to connect to any server, next retry in {}s...", BS_RETRY);
-            registerFuture = schedExecutor.schedule(new RegistrationTask(), BS_RETRY, TimeUnit.SECONDS);
+            registerFuture = schedExecutor.schedule(new RegistrationTask(shutdownTrigger), BS_RETRY, TimeUnit.SECONDS);
         }
     }
 
@@ -321,11 +337,17 @@ public class RegistrationEngine {
             // dmInfo.lifetime is in seconds
             long nextUpdate = dmInfo.lifetime * 900l;
             LOG.info("Next registration update in {}s...", nextUpdate / 1000.0);
-            updateFuture = schedExecutor.schedule(new UpdateRegistrationTask(), nextUpdate, TimeUnit.MILLISECONDS);
+            updateFuture = schedExecutor.schedule(new UpdateRegistrationTask(shutdownTrigger), nextUpdate, TimeUnit.MILLISECONDS);
         }
     }
 
     private class UpdateRegistrationTask implements Runnable {
+        private final Runnable shutdownTrigger;
+
+        private UpdateRegistrationTask(final Runnable shutdownTrigger) {
+            this.shutdownTrigger = shutdownTrigger;
+        }
+
         @Override
         public void run() {
             try {
@@ -344,6 +366,7 @@ public class RegistrationEngine {
                 LOG.info("Registration update task interrupted.");
             } catch (RuntimeException e) {
                 LOG.error("Unexpected exception during update registration task", e);
+                shutdownTrigger.run();
             }
         }
     }
@@ -395,7 +418,7 @@ public class RegistrationEngine {
             if (started) {
                 cancelUpdateTask(true);
                 LOG.info("Triggering registration update...");
-                schedExecutor.submit(new UpdateRegistrationTask());
+                schedExecutor.submit(new UpdateRegistrationTask(shutdownTrigger));
             }
         }
     }

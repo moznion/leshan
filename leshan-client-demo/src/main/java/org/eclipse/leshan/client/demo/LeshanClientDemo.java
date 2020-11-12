@@ -20,7 +20,6 @@ package org.eclipse.leshan.client.demo;
 
 import static org.eclipse.leshan.LwM2mId.*;
 import static org.eclipse.leshan.client.object.Security.*;
-
 import java.io.File;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -233,9 +232,6 @@ public class LeshanClientDemo {
         }
         initializer.setClassForObject(DEVICE, MyDevice.class);
         initializer.setInstancesForObject(LOCATION, locationInstance);
-        initializer.setInstancesForObject(OBJECT_ID_TEMPERATURE_SENSOR, new RandomTemperatureSensor());
-        List<LwM2mObjectEnabler> enablers = initializer.create(SECURITY, SERVER, DEVICE, LOCATION,
-                OBJECT_ID_TEMPERATURE_SENSOR);
 
         // Create CoAP Config
         NetworkConfig coapConfig;
@@ -252,7 +248,6 @@ public class LeshanClientDemo {
         LeshanClientBuilder builder = new LeshanClientBuilder(endpoint);
         builder.setLocalAddress(localAddress, localPort);
         builder.setLocalSecureAddress(secureLocalAddress, secureLocalPort);
-        builder.setObjects(enablers);
         builder.setCoapConfig(coapConfig);
         // if we don't use bootstrap, client will always use the same unique endpoint
         // so we can disable the other one.
@@ -262,7 +257,21 @@ public class LeshanClientDemo {
             else
                 builder.disableUnsecuredEndpoint();
         }
+
+        final LeshanClientHolder leshanClientHolder = new LeshanClientHolder();
+        builder.setShutdownTrigger(new Runnable() {
+                @Override
+                public void run() {
+                    LOG.info("shutdown trigger called");
+                    final LeshanClient client = leshanClientHolder.getClient();
+                    if (client != null) {
+                        client.destroy(true);
+                    }
+                }
+            }
+        );
         final LeshanClient client = builder.build();
+        leshanClientHolder.setClient(client);
 
         LOG.info("Press 'w','a','s','d' to change reported Location ({},{}).", locationInstance.getLatitude(),
                 locationInstance.getLongitude());
@@ -274,16 +283,20 @@ public class LeshanClientDemo {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
-                client.destroy(true); // send de-registration request before destroy
+                client.destroy(true);
             }
         });
+    }
 
-        // Change the location through the Console
-        try (Scanner scanner = new Scanner(System.in)) {
-            while (scanner.hasNext()) {
-                String nextMove = scanner.next();
-                locationInstance.moveLocation(nextMove);
-            }
+    private static class LeshanClientHolder {
+        private LeshanClient client;
+
+        public LeshanClient getClient() {
+            return client;
+        }
+
+        public void setClient(final LeshanClient client) {
+            this.client = client;
         }
     }
 }

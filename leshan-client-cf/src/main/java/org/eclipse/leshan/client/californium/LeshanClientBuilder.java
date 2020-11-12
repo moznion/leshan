@@ -60,6 +60,12 @@ public class LeshanClientBuilder {
     private EndpointFactory endpointFactory;
     private Map<String, String> additionalAttributes;
 
+    private Runnable shutdownTrigger = new Runnable() {
+        @Override
+        public void run() {
+        }
+    };
+
     /**
      * Creates a new instance for setting the configuration options for a {@link LeshanClient} instance.
      * 
@@ -158,6 +164,11 @@ public class LeshanClientBuilder {
      */
     public LeshanClientBuilder disableSecuredEndpoint() {
         this.noSecuredEndpoint = true;
+        return this;
+    }
+
+    public LeshanClientBuilder setShutdownTrigger(final Runnable shutdownTrigger) {
+        this.shutdownTrigger = shutdownTrigger;
         return this;
     }
 
@@ -271,6 +282,6 @@ public class LeshanClientBuilder {
         }
 
         return new LeshanClient(endpoint, unsecuredEndpoint, securedEndpoint, objectEnablers, coapConfig,
-                additionalAttributes);
+                additionalAttributes, shutdownTrigger);
     }
 }
